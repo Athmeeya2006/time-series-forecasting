@@ -164,6 +164,38 @@ def add_target(df):
     return df
 
 
+def select_features(df, feature_cols, max_features=None):
+    """
+    Select the top-K features using mutual information regression.
+    K is capped at train_rows / 5 (minimum 15) to prevent overfitting
+    on small datasets. If the dataset is large enough, all features pass.
+    """
+    from sklearn.feature_selection import mutual_info_regression
+    from config import TRAIN_RATIO
+
+    n_train = int(len(df) * TRAIN_RATIO)
+    if max_features is None:
+        max_features = max(15, n_train // 5)
+
+    if len(feature_cols) <= max_features:
+        print(f"[features] Keeping all {len(feature_cols)} features "
+              f"(under cap of {max_features})")
+        return feature_cols
+
+    # Compute MI on training portion only to avoid leakage
+    X_train = df[feature_cols].iloc[:n_train]
+    y_train = df["Target"].iloc[:n_train]
+
+    mi_scores = mutual_info_regression(X_train, y_train, random_state=42)
+    mi_series = pd.Series(mi_scores, index=feature_cols).sort_values(ascending=False)
+
+    selected = mi_series.head(max_features).index.tolist()
+    print(f"[features] Selected {len(selected)}/{len(feature_cols)} features "
+          f"by mutual information (cap={max_features})")
+    print(f"[features] Top 10: {selected[:10]}")
+    return selected
+
+
 def build_features(df):
     """
     Master function. Applies all feature engineering in order.
@@ -187,7 +219,10 @@ def build_features(df):
     ]
     feature_cols = [c for c in df.columns if c not in exclude]
 
-    print(f"[features] {len(df)} usable rows, {len(feature_cols)} features")
+    # Adaptive feature selection: prevent overfitting on small datasets
+    feature_cols = select_features(df, feature_cols)
+
+    print(f"[features] {len(df)} usable rows, {len(feature_cols)} features (final)")
     return df, feature_cols
 
 
