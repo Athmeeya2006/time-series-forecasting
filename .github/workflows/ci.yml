@@ -1,0 +1,85 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  lint:
+    name: Lint & Syntax
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Compile all sources
+        run: python -m compileall -q . -x ".venv|outputs"
+
+      - name: Check pip dependencies
+        run: python -m pip check
+
+  test:
+    name: Run Pipeline
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Run forecasting pipeline
+        run: python main.py
+
+      - name: Validate outputs exist
+        run: |
+          for prefix in 500209 500510 532174; do
+            test -f "outputs/${prefix}_benchmark_results.csv" || { echo "Missing ${prefix}_benchmark_results.csv"; exit 1; }
+            test -f "outputs/${prefix}_04_benchmark_comparison.png" || { echo "Missing ${prefix} benchmark plot"; exit 1; }
+            test -f "outputs/${prefix}_03_all_predictions_overlay.png" || { echo "Missing ${prefix} overlay plot"; exit 1; }
+          done
+          echo "All expected outputs present."
+
+      - name: Validate naive baseline directional accuracy
+        run: |
+          python -c "
+          import csv, sys
+          for prefix in ['500209', '500510', '532174']:
+              path = f'outputs/{prefix}_benchmark_results.csv'
+              with open(path) as f:
+                  for row in csv.DictReader(f):
+                      if row['Model'] == 'Naive Baseline':
+                          da = float(row['Dir Acc%'])
+                          assert 49.0 <= da <= 51.0, f'{prefix}: Naive DirAcc={da}%, expected ~50%'
+                          print(f'{prefix}: Naive Baseline DirAcc={da}% (OK)')
+                          break
+          "
+
+      - name: Upload benchmark results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results
+          path: outputs/
+          retention-days: 30

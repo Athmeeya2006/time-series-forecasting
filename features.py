@@ -4,10 +4,11 @@ features.py - All feature engineering. One job only.
 Features built:
   1. Lag features        - what the price/volume WAS n days ago
   2. Rolling stats       - trend and volatility over a window
-  3. Return features     - percentage change, log return
-  4. Technical indicators - RSI, MACD, Bollinger Bands, EMA, SMA
+  3. Return features     - percentage change, log return (shifted to avoid leakage)
+  4. Technical indicators - RSI, MACD, Bollinger Bands, EMA, SMA, ATR, OBV proxy
   5. Calendar features   - day of week, month
-  6. Target              - next-day close price (shift -1)
+  6. Interaction features- cross-feature ratios for richer signal
+  7. Target              - next-day close price (shift -1)
 """
 
 import pandas as pd
@@ -31,20 +32,41 @@ def add_lag_features(df):
 
 
 def add_rolling_features(df):
-    """Rolling mean and std on Close, shifted by 1 to prevent leakage."""
+    """Rolling mean, std, min, max on Close, shifted by 1 to prevent leakage."""
     for w in ROLLING_WINDOWS:
         base = df[TARGET_COL].shift(1)
         df[f"close_mean_{w}d"] = base.rolling(w).mean()
         df[f"close_std_{w}d"]  = base.rolling(w).std()
+        df[f"close_min_{w}d"]  = base.rolling(w).min()
+        df[f"close_max_{w}d"]  = base.rolling(w).max()
+        # Rolling range as a fraction of rolling mean (volatility-normalized)
+        df[f"close_range_pct_{w}d"] = (
+            (df[f"close_max_{w}d"] - df[f"close_min_{w}d"])
+            / (df[f"close_mean_{w}d"] + 1e-9)
+        )
+    # Volume rolling features
+    if "No.of Shares" in df.columns:
+        vol = df["No.of Shares"].shift(1)
+        for w in ROLLING_WINDOWS:
+            df[f"volume_mean_{w}d"] = vol.rolling(w).mean()
+            df[f"volume_ratio_{w}d"] = df["No.of Shares"].shift(1) / (
+                vol.rolling(w).mean() + 1e-9
+            )
     return df
 
 
 def add_return_features(df):
-    df["daily_return"] = df[TARGET_COL].pct_change()
-    df["log_return"]   = np.log(df[TARGET_COL] / df[TARGET_COL].shift(1))
+    """All return features use shift(1) to avoid look-ahead leakage."""
+    shifted = df[TARGET_COL].shift(1)
+    df["daily_return"]    = shifted.pct_change()
+    df["log_return"]      = np.log(shifted / shifted.shift(1))
     # Rolling return (momentum signal)
-    df["return_3d"]    = df[TARGET_COL].pct_change(3)
-    df["return_5d"]    = df[TARGET_COL].pct_change(5)
+    df["return_3d"]       = shifted.pct_change(3)
+    df["return_5d"]       = shifted.pct_change(5)
+    df["return_10d"]      = shifted.pct_change(10)
+    # Return volatility (realized vol)
+    df["return_std_5d"]   = df["daily_return"].rolling(5).std()
+    df["return_std_10d"]  = df["daily_return"].rolling(10).std()
     return df
 
 
@@ -64,41 +86,67 @@ def _ema(series, span):
 
 
 def add_technical_indicators(df):
-    close = df[TARGET_COL]
+    close = df[TARGET_COL].shift(1)  # Always use lagged close
 
     # Simple Moving Averages
-    df["SMA_5"]  = close.shift(1).rolling(5).mean()
-    df["SMA_10"] = close.shift(1).rolling(10).mean()
-    df["SMA_20"] = close.shift(1).rolling(20).mean()
+    df["SMA_5"]  = close.rolling(5).mean()
+    df["SMA_10"] = close.rolling(10).mean()
+    df["SMA_20"] = close.rolling(20).mean()
+    df["SMA_50"] = close.rolling(50).mean()
 
     # Exponential Moving Averages
-    df["EMA_5"]  = _ema(close.shift(1), 5)
-    df["EMA_10"] = _ema(close.shift(1), 10)
+    df["EMA_5"]  = _ema(close, 5)
+    df["EMA_10"] = _ema(close, 10)
+    df["EMA_20"] = _ema(close, 20)
 
     # RSI (14-day)
-    df["RSI_14"] = _rsi(close.shift(1), 14)
+    df["RSI_14"] = _rsi(close, 14)
 
     # MACD = EMA12 - EMA26. Signal line = EMA9 of MACD.
-    ema12         = _ema(close.shift(1), 12)
-    ema26         = _ema(close.shift(1), 26)
+    ema12         = _ema(close, 12)
+    ema26         = _ema(close, 26)
     df["MACD"]         = ema12 - ema26
     df["MACD_signal"]  = _ema(df["MACD"], 9)
     df["MACD_hist"]    = df["MACD"] - df["MACD_signal"]
 
     # Bollinger Bands: price relative to its rolling mean +/- 2 std
-    bb_mean        = close.shift(1).rolling(20).mean()
-    bb_std         = close.shift(1).rolling(20).std()
+    bb_mean        = close.rolling(20).mean()
+    bb_std         = close.rolling(20).std()
     df["BB_upper"] = bb_mean + 2 * bb_std
     df["BB_lower"] = bb_mean - 2 * bb_std
     df["BB_width"] = df["BB_upper"] - df["BB_lower"]          # volatility proxy
-    df["BB_pct"]   = (close.shift(1) - df["BB_lower"]) / (df["BB_width"] + 1e-9)
+    df["BB_pct"]   = (close - df["BB_lower"]) / (df["BB_width"] + 1e-9)
 
     # Price vs SMA ratios (where is price relative to trend?)
-    df["price_vs_SMA5"]  = close.shift(1) / (df["SMA_5"]  + 1e-9)
-    df["price_vs_SMA20"] = close.shift(1) / (df["SMA_20"] + 1e-9)
+    df["price_vs_SMA5"]  = close / (df["SMA_5"]  + 1e-9)
+    df["price_vs_SMA20"] = close / (df["SMA_20"] + 1e-9)
+    df["price_vs_SMA50"] = close / (df["SMA_50"] + 1e-9)
+
+    # SMA crossover signals (momentum regime)
+    df["SMA5_vs_SMA20"]  = df["SMA_5"] / (df["SMA_20"] + 1e-9)
+    df["SMA10_vs_SMA50"] = df["SMA_10"] / (df["SMA_50"] + 1e-9)
+    df["EMA5_vs_EMA20"]  = df["EMA_5"] / (df["EMA_20"] + 1e-9)
+
+    # ATR (Average True Range) - volatility indicator
+    if "High Price" in df.columns and "Low Price" in df.columns:
+        high = df["High Price"].shift(1)
+        low  = df["Low Price"].shift(1)
+        tr1 = high - low
+        tr2 = np.abs(high - close)
+        tr3 = np.abs(low - close)
+        true_range = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+        df["ATR_14"] = true_range.rolling(14).mean()
+        df["ATR_pct"] = df["ATR_14"] / (close + 1e-9)  # normalized ATR
 
     # High-Low spread ratio
-    df["HL_ratio"] = df["Spread High-Low"] / (close.shift(1) + 1e-9)
+    df["HL_ratio"] = df["Spread High-Low"] / (close + 1e-9)
+
+    # Stochastic Oscillator (%K)
+    if "High Price" in df.columns and "Low Price" in df.columns:
+        low14  = df["Low Price"].shift(1).rolling(14).min()
+        high14 = df["High Price"].shift(1).rolling(14).max()
+        df["stoch_K"] = (close - low14) / (high14 - low14 + 1e-9) * 100
+        df["stoch_D"] = df["stoch_K"].rolling(3).mean()
 
     return df
 
@@ -106,6 +154,7 @@ def add_technical_indicators(df):
 def add_calendar_features(df):
     df["dayofweek"] = df[DATE_COL].dt.dayofweek
     df["month"]     = df[DATE_COL].dt.month
+    df["quarter"]   = df[DATE_COL].dt.quarter
     return df
 
 
@@ -127,7 +176,7 @@ def build_features(df):
     df = add_calendar_features(df)
     df = add_target(df)
 
-    df = df.dropna().reset_index(drop=True)
+    df = df.dropna().copy().reset_index(drop=True)
 
     # Everything except raw OHLC, Date, Target is a feature
     exclude = [DATE_COL, "Target"] + [
@@ -143,7 +192,8 @@ def build_features(df):
 
 
 if __name__ == "__main__":
+    from config import DATA_PATHS
     from data_loader import load_and_clean
-    data = load_and_clean()
+    data = load_and_clean(DATA_PATHS[0])
     data, fcols = build_features(data)
     print("Sample features:", fcols[:10])

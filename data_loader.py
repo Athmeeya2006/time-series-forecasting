@@ -3,20 +3,26 @@ data_loader.py - Load, clean, and validate the CSV. One job only.
 """
 
 import pandas as pd
-from config import DATA_PATH, DATE_COL, DATE_FORMAT, TARGET_COL
+from config import DATA_PATHS, DATE_COL, DATE_FORMAT, TARGET_COL
 
 
-def load_and_clean() -> pd.DataFrame:
-    df = pd.read_csv(DATA_PATH)
+def load_and_clean(data_path) -> pd.DataFrame:
+    df = pd.read_csv(data_path)
 
-    # 1. Parse dates and sort oldest -> newest (raw data is reversed)
+    # 1. Strip whitespace from column names before validation/parsing
+    df.columns = df.columns.str.strip()
+
+    required_cols = {DATE_COL, TARGET_COL}
+    missing_cols = required_cols - set(df.columns)
+    if missing_cols:
+        missing = ", ".join(sorted(missing_cols))
+        raise ValueError(f"{data_path} is missing required columns: {missing}")
+
+    # 2. Parse dates and sort oldest -> newest (raw data is reversed)
     df[DATE_COL] = pd.to_datetime(df[DATE_COL], format=DATE_FORMAT)
     df = df.sort_values(DATE_COL).reset_index(drop=True)
 
-    # 2. Strip whitespace from column names
-    df.columns = df.columns.str.strip()
-
-    # 3. Force all numeric columns to float
+    # 3. Force all non-date columns to numeric
     numeric_cols = [c for c in df.columns if c != DATE_COL]
     for col in numeric_cols:
         df[col] = pd.to_numeric(df[col], errors="coerce")
@@ -24,6 +30,7 @@ def load_and_clean() -> pd.DataFrame:
     # 4. Drop fully duplicate rows
     df = df.drop_duplicates(subset=DATE_COL).reset_index(drop=True)
 
+    print(f"[data_loader] Loaded {data_path}")
     print(f"[data_loader] Loaded {len(df)} rows, {len(df.columns)} columns")
     print(f"[data_loader] Date range: {df[DATE_COL].min().date()} to {df[DATE_COL].max().date()}")
     missing = df.isnull().sum()
@@ -40,5 +47,12 @@ def get_summary(df: pd.DataFrame) -> pd.DataFrame:
 
 
 if __name__ == "__main__":
-    data = load_and_clean()
-    print(get_summary(data))
+    import sys
+
+    paths = sys.argv[1:] or DATA_PATHS
+    if not paths:
+        raise SystemExit("No CSV files found.")
+
+    for path in paths:
+        data = load_and_clean(path)
+        print(get_summary(data))

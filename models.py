@@ -12,8 +12,12 @@ MODEL_REGISTRY maps name -> function so benchmark.py can loop over all.
 import numpy as np
 from sklearn.linear_model import Ridge, Lasso, ElasticNet
 from sklearn.svm import SVR
-from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
-from sklearn.model_selection import TimeSeriesSplit, GridSearchCV
+from sklearn.ensemble import (
+    RandomForestRegressor, GradientBoostingRegressor,
+    AdaBoostRegressor, StackingRegressor,
+)
+from sklearn.tree import DecisionTreeRegressor
+from sklearn.model_selection import TimeSeriesSplit, RandomizedSearchCV, GridSearchCV
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 from xgboost import XGBRegressor
@@ -21,15 +25,28 @@ from lightgbm import LGBMRegressor
 
 from config import (
     TSCV_SPLITS, RIDGE_ALPHAS, LASSO_ALPHAS,
-    ENET_GRID, SVR_GRID, RF_GRID, XGB_GRID, LGBM_GRID
+    ENET_GRID, SVR_GRID, RF_GRID, GBM_GRID, XGB_GRID, LGBM_GRID
 )
 
 TSCV = TimeSeriesSplit(n_splits=TSCV_SPLITS)
 
+# Threshold: if grid has more combinations than this, use RandomizedSearchCV
+_RANDOMIZED_THRESHOLD = 60
+_RANDOMIZED_ITERS = 40
+
+
+def _grid_size(param_grid):
+    """Estimate the number of combinations in a parameter grid."""
+    size = 1
+    for v in param_grid.values():
+        size *= len(v)
+    return size
+
 
 def _tune(estimator, param_grid, X_train, y_train, scale=True):
     """
-    Wraps estimator in a Pipeline and runs GridSearchCV with TimeSeriesSplit.
+    Wraps estimator in a Pipeline and runs GridSearchCV or RandomizedSearchCV
+    with TimeSeriesSplit.
     scale=True adds StandardScaler (required for Ridge, Lasso, SVR).
     scale=False skips scaler (tree models don't need it).
     """
@@ -40,13 +57,25 @@ def _tune(estimator, param_grid, X_train, y_train, scale=True):
     prefixed = {f"model__{k}": v for k, v in param_grid.items()}
     pipe = Pipeline(steps)
 
-    gs = GridSearchCV(
-        pipe, prefixed,
-        cv=TSCV,
-        scoring="neg_mean_absolute_error",
-        n_jobs=-1,
-        refit=True
-    )
+    n_combos = _grid_size(prefixed)
+    if n_combos > _RANDOMIZED_THRESHOLD:
+        gs = RandomizedSearchCV(
+            pipe, prefixed,
+            n_iter=min(_RANDOMIZED_ITERS, n_combos),
+            cv=TSCV,
+            scoring="neg_mean_absolute_error",
+            n_jobs=-1,
+            refit=True,
+            random_state=42,
+        )
+    else:
+        gs = GridSearchCV(
+            pipe, prefixed,
+            cv=TSCV,
+            scoring="neg_mean_absolute_error",
+            n_jobs=-1,
+            refit=True,
+        )
     gs.fit(X_train, y_train)
     return gs.best_estimator_, gs.best_params_
 
@@ -77,7 +106,7 @@ def train_elasticnet(X_train, y_train):
       l1_ratio = mix (0=pure Ridge, 1=pure Lasso, 0.5=half-half)
     Often outperforms both individually.
     """
-    return _tune(ElasticNet(max_iter=50000), ENET_GRID, X_train, y_train)
+    return _tune(ElasticNet(max_iter=100000), ENET_GRID, X_train, y_train)
 
 
 def train_svr(X_train, y_train):
@@ -114,14 +143,9 @@ def train_gradient_boosting(X_train, y_train):
       max_depth     = tree depth per round (keep low: 3-5)
       learning_rate = how much each tree contributes (lower = slower but better)
     """
-    grid = {
-        "n_estimators":  [100, 200],
-        "max_depth":     [3, 4],
-        "learning_rate": [0.05, 0.1],
-    }
     return _tune(
         GradientBoostingRegressor(random_state=42),
-        grid, X_train, y_train, scale=False
+        GBM_GRID, X_train, y_train, scale=False
     )
 
 
@@ -149,6 +173,89 @@ def train_lightgbm(X_train, y_train):
     )
 
 
+def train_adaboost(X_train, y_train):
+    """
+    AdaBoost: adaptive boosting with decision stumps.
+    Focuses on hard-to-predict samples by re-weighting.
+    """
+    grid = {
+        "n_estimators": [100, 200, 500],
+        "learning_rate": [0.01, 0.05, 0.1, 0.5],
+        "estimator__max_depth": [1, 2, 3],
+    }
+    steps = [("model", AdaBoostRegressor(
+        estimator=DecisionTreeRegressor(max_depth=2),
+        random_state=42,
+    ))]
+    prefixed = {f"model__{k}": v for k, v in grid.items()}
+    pipe = Pipeline(steps)
+
+    n_combos = 1
+    for v in prefixed.values():
+        n_combos *= len(v)
+    if n_combos > _RANDOMIZED_THRESHOLD:
+        gs = RandomizedSearchCV(
+            pipe, prefixed,
+            n_iter=min(_RANDOMIZED_ITERS, n_combos),
+            cv=TSCV,
+            scoring="neg_mean_absolute_error",
+            n_jobs=-1,
+            refit=True,
+            random_state=42,
+        )
+    else:
+        gs = GridSearchCV(
+            pipe, prefixed,
+            cv=TSCV,
+            scoring="neg_mean_absolute_error",
+            n_jobs=-1,
+            refit=True,
+        )
+    gs.fit(X_train, y_train)
+    return gs.best_estimator_, gs.best_params_
+
+
+def train_stacking(X_train, y_train):
+    """
+    Stacking Ensemble: combines multiple diverse base models with a Ridge
+    meta-learner. Each base model's out-of-fold predictions become features
+    for the meta-learner, capturing complementary signals.
+    """
+    base_estimators = [
+        ("ridge", Pipeline([
+            ("scaler", StandardScaler()),
+            ("model", Ridge(alpha=1.0)),
+        ])),
+        ("rf", RandomForestRegressor(
+            n_estimators=200, max_depth=10, random_state=42
+        )),
+        ("xgb", XGBRegressor(
+            n_estimators=200, max_depth=5, learning_rate=0.05,
+            random_state=42, verbosity=0
+        )),
+        ("lgbm", LGBMRegressor(
+            n_estimators=200, num_leaves=31, learning_rate=0.05,
+            random_state=42, verbose=-1
+        )),
+    ]
+
+    # Use KFold (no shuffle) instead of TimeSeriesSplit because
+    # StackingRegressor requires full-partition CV (every sample in exactly
+    # one test fold). Individual base models were already tuned with TSCV.
+    from sklearn.model_selection import KFold
+    stack = StackingRegressor(
+        estimators=base_estimators,
+        final_estimator=Pipeline([
+            ("scaler", StandardScaler()),
+            ("model", Ridge(alpha=1.0)),
+        ]),
+        cv=KFold(n_splits=5, shuffle=False),
+        n_jobs=-1,
+    )
+    stack.fit(X_train, y_train)
+    return stack, {"ensemble": "Ridge+RF+XGB+LGBM -> Ridge meta"}
+
+
 MODEL_REGISTRY = {
     "Ridge":             train_ridge,
     "Lasso":             train_lasso,
@@ -158,4 +265,6 @@ MODEL_REGISTRY = {
     "Gradient Boosting": train_gradient_boosting,
     "XGBoost":           train_xgboost,
     "LightGBM":          train_lightgbm,
+    "AdaBoost":          train_adaboost,
+    "Stacking":          train_stacking,
 }

@@ -1,61 +1,75 @@
 """
-config.py - All constants and hyperparameter grids in one place.
-Change things here only. Nothing else needs editing for tuning.
+config.py - Centralized constants and hyperparameters.
 """
 
 from pathlib import Path
 
+BASE_DIR = Path(__file__).resolve().parent
 
-BASE_DIR     = Path(__file__).resolve().parent
-DATA_PATH    = BASE_DIR / "500209.csv"
-TARGET_COL   = "Close Price"
-DATE_COL     = "Date"
-DATE_FORMAT  = "%d-%B-%Y"
+DATA_PATHS = [
+    "500209.csv",
+    "500510.csv",
+    "532174.csv",
+]
 
-TRAIN_RATIO     = 0.80
-LAG_STEPS       = [1, 2, 3, 5]
-ROLLING_WINDOWS = [3, 5, 10]
-TSCV_SPLITS     = 5
-OUTPUT_DIR      = "outputs"
+DATE_COL = "Date"
+DATE_FORMAT = "%d-%B-%Y"
+TARGET_COL = "Close Price"
 
-# Ridge
-RIDGE_ALPHAS = [0.01, 0.1, 0.5, 1, 5, 10, 50, 100]
+OUTPUT_DIR = BASE_DIR / "outputs"
 
-# Lasso
-LASSO_ALPHAS = [0.001, 0.01, 0.05, 0.1, 0.5, 1, 5]
+TRAIN_RATIO = 0.8
+TSCV_SPLITS = 5
 
-# ElasticNet
+LAG_STEPS = [1, 2, 3, 5, 10]
+ROLLING_WINDOWS = [3, 5, 10, 20]
+
+RIDGE_ALPHAS = [0.01, 0.1, 1.0, 10.0, 100.0]
+LASSO_ALPHAS = [0.0001, 0.001, 0.01, 0.1, 1.0]
+
 ENET_GRID = {
-    "alpha":    [0.01, 0.1, 0.5, 1],
+    "alpha": [0.0001, 0.001, 0.01, 0.1, 1.0],
     "l1_ratio": [0.1, 0.3, 0.5, 0.7, 0.9],
 }
 
-# SVR  (great for small datasets)
 SVR_GRID = {
-    "C":       [0.1, 1, 10, 100],
-    "epsilon": [0.01, 0.1, 0.5, 1],
-    "kernel":  ["rbf", "linear"],
+    "C": [0.1, 1, 10, 100],
+    "epsilon": [0.001, 0.01, 0.1],
+    "kernel": ["rbf", "linear"],
 }
 
-# Random Forest
 RF_GRID = {
-    "n_estimators":   [100, 200],
-    "max_depth":      [3, 5, None],
-    "min_samples_leaf": [2, 4],
+    "n_estimators": [200, 500],
+    "max_depth": [5, 10, 20, None],
+    "min_samples_leaf": [1, 2, 5],
+    "min_samples_split": [2, 5],
 }
 
-# XGBoost
+GBM_GRID = {
+    "n_estimators": [200, 500],
+    "max_depth": [3, 4, 5],
+    "learning_rate": [0.01, 0.05, 0.1],
+    "subsample": [0.8, 1.0],
+    "min_samples_leaf": [1, 3, 5],
+}
+
 XGB_GRID = {
-    "n_estimators":  [100, 200],
-    "max_depth":     [3, 4],
-    "learning_rate": [0.05, 0.1],
-    "subsample":     [0.8, 1.0],
+    "n_estimators": [200, 500],
+    "max_depth": [3, 5, 7],
+    "learning_rate": [0.01, 0.05, 0.1],
+    "subsample": [0.7, 0.8, 1.0],
+    "colsample_bytree": [0.7, 0.8, 1.0],
+    "reg_alpha": [0, 0.1, 1.0],
+    "reg_lambda": [1.0, 5.0],
 }
 
-# LightGBM
 LGBM_GRID = {
-    "n_estimators":  [100, 200],
-    "max_depth":     [3, 4],
-    "learning_rate": [0.05, 0.1],
-    "num_leaves":    [15, 31],
+    "n_estimators": [200, 500],
+    "num_leaves": [15, 31, 63],
+    "learning_rate": [0.01, 0.05, 0.1],
+    "subsample": [0.7, 0.8, 1.0],
+    "colsample_bytree": [0.7, 0.8, 1.0],
+    "reg_alpha": [0, 0.1, 1.0],
+    "reg_lambda": [0, 1.0, 5.0],
+    "min_child_samples": [5, 10, 20],
 }
