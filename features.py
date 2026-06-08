@@ -4,7 +4,8 @@ features.py - All feature engineering. One job only.
 Features built:
   1. Lag features        - what the price/volume WAS n days ago
   2. Rolling stats       - trend and volatility over a window
-  3. Return features     - percentage change, log return (shifted to avoid leakage)
+  3. Return features     - percentage change, log return (using today's close; safe
+                           because the target is shift(-1))
   4. Technical indicators - RSI, MACD, Bollinger Bands, EMA, SMA, ATR, OBV proxy
   5. Calendar features   - day of week, month
   6. Interaction features- cross-feature ratios for richer signal
@@ -32,9 +33,10 @@ def add_lag_features(df):
 
 
 def add_rolling_features(df):
-    """Rolling mean, std, min, max on Close, shifted by 1 to prevent leakage."""
+    """Rolling mean, std, min, max on Close (using today's close — no extra shift
+    needed because the target is already shift(-1))."""
     for w in ROLLING_WINDOWS:
-        base = df[TARGET_COL].shift(1)
+        base = df[TARGET_COL]
         df[f"close_mean_{w}d"] = base.rolling(w).mean()
         df[f"close_std_{w}d"]  = base.rolling(w).std()
         df[f"close_min_{w}d"]  = base.rolling(w).min()
@@ -46,24 +48,25 @@ def add_rolling_features(df):
         )
     # Volume rolling features
     if "No.of Shares" in df.columns:
-        vol = df["No.of Shares"].shift(1)
+        vol = df["No.of Shares"]
         for w in ROLLING_WINDOWS:
             df[f"volume_mean_{w}d"] = vol.rolling(w).mean()
-            df[f"volume_ratio_{w}d"] = df["No.of Shares"].shift(1) / (
+            df[f"volume_ratio_{w}d"] = df["No.of Shares"] / (
                 vol.rolling(w).mean() + 1e-9
             )
     return df
 
 
 def add_return_features(df):
-    """All return features use shift(1) to avoid look-ahead leakage."""
-    shifted = df[TARGET_COL].shift(1)
-    df["daily_return"]    = shifted.pct_change()
-    df["log_return"]      = np.log(shifted / shifted.shift(1))
+    """Return features use today's close (no extra shift — target is already
+    shift(-1), so using today's data is safe)."""
+    close = df[TARGET_COL]
+    df["daily_return"]    = close.pct_change()
+    df["log_return"]      = np.log(close / close.shift(1))
     # Rolling return (momentum signal)
-    df["return_3d"]       = shifted.pct_change(3)
-    df["return_5d"]       = shifted.pct_change(5)
-    df["return_10d"]      = shifted.pct_change(10)
+    df["return_3d"]       = close.pct_change(3)
+    df["return_5d"]       = close.pct_change(5)
+    df["return_10d"]      = close.pct_change(10)
     # Return volatility (realized vol)
     df["return_std_5d"]   = df["daily_return"].rolling(5).std()
     df["return_std_10d"]  = df["daily_return"].rolling(10).std()
@@ -86,7 +89,7 @@ def _ema(series, span):
 
 
 def add_technical_indicators(df):
-    close = df[TARGET_COL].shift(1)  # Always use lagged close
+    close = df[TARGET_COL]  # Use today's close (target is shift(-1), no leakage)
 
     # Simple Moving Averages
     df["SMA_5"]  = close.rolling(5).mean()
@@ -129,8 +132,8 @@ def add_technical_indicators(df):
 
     # ATR (Average True Range) - volatility indicator
     if "High Price" in df.columns and "Low Price" in df.columns:
-        high = df["High Price"].shift(1)
-        low  = df["Low Price"].shift(1)
+        high = df["High Price"]
+        low  = df["Low Price"]
         tr1 = high - low
         tr2 = np.abs(high - close)
         tr3 = np.abs(low - close)
@@ -143,8 +146,8 @@ def add_technical_indicators(df):
 
     # Stochastic Oscillator (%K)
     if "High Price" in df.columns and "Low Price" in df.columns:
-        low14  = df["Low Price"].shift(1).rolling(14).min()
-        high14 = df["High Price"].shift(1).rolling(14).max()
+        low14  = df["Low Price"].rolling(14).min()
+        high14 = df["High Price"].rolling(14).max()
         df["stoch_K"] = (close - low14) / (high14 - low14 + 1e-9) * 100
         df["stoch_D"] = df["stoch_K"].rolling(3).mean()
 
@@ -210,13 +213,11 @@ def build_features(df):
 
     df = df.dropna().copy().reset_index(drop=True)
 
-    # Everything except raw OHLC, Date, Target is a feature
-    exclude = [DATE_COL, "Target"] + [
-        "Open Price", "High Price", "Low Price", "Close Price",
-        "WAP", "No.of Shares", "No. of Trades",
-        "Total Turnover (Rs.)", "Deliverable Quantity",
-        "% Deli. Qty to Traded Qty", "Spread High-Low", "Spread Close-Open"
-    ]
+    # Exclude only metadata columns — keep raw OHLC/Volume as direct features
+    # so today's price levels are visible to the model.
+    exclude = [DATE_COL, "Target",
+               "Total Turnover (Rs.)", "Deliverable Quantity",
+               "% Deli. Qty to Traded Qty"]
     feature_cols = [c for c in df.columns if c not in exclude]
 
     # Adaptive feature selection: prevent overfitting on small datasets
@@ -227,8 +228,13 @@ def build_features(df):
 
 
 if __name__ == "__main__":
-    from config import DATA_PATHS
+    from config import DATA_PATHS, BASE_DIR
+    from pathlib import Path
     from data_loader import load_and_clean
-    data = load_and_clean(DATA_PATHS[0])
+
+    p = Path(DATA_PATHS[0])
+    if not p.is_absolute():
+        p = BASE_DIR / p
+    data = load_and_clean(p)
     data, fcols = build_features(data)
     print("Sample features:", fcols[:10])

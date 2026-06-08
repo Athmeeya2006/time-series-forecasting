@@ -54,7 +54,7 @@ jobs:
 
       - name: Validate outputs exist
         run: |
-          for prefix in 500209 500510 532174; do
+          for prefix in 500209 500209_combined 500510 532174; do
             test -f "outputs/${prefix}_benchmark_results.csv" || { echo "Missing ${prefix}_benchmark_results.csv"; exit 1; }
             test -f "outputs/${prefix}_04_benchmark_comparison.png" || { echo "Missing ${prefix} benchmark plot"; exit 1; }
             test -f "outputs/${prefix}_03_all_predictions_overlay.png" || { echo "Missing ${prefix} overlay plot"; exit 1; }
@@ -65,7 +65,7 @@ jobs:
         run: |
           python -c "
           import csv, sys
-          for prefix in ['500209', '500510', '532174']:
+            for prefix in ['500209', '500209_combined', '500510', '532174']:
               path = f'outputs/{prefix}_benchmark_results.csv'
               with open(path) as f:
                   for row in csv.DictReader(f):

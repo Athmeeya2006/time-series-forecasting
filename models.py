@@ -156,7 +156,7 @@ def train_xgboost(X_train, y_train):
     Often the strongest classical ML model.
     """
     return _tune(
-        XGBRegressor(random_state=42, verbosity=0),
+        XGBRegressor(random_state=42, verbosity=0, n_jobs=1),
         XGB_GRID, X_train, y_train, scale=False
     )
 
@@ -168,7 +168,7 @@ def train_lightgbm(X_train, y_train):
     num_leaves controls complexity directly.
     """
     return _tune(
-        LGBMRegressor(random_state=42, verbose=-1),
+        LGBMRegressor(random_state=42, verbose=-1, n_jobs=1),
         LGBM_GRID, X_train, y_train, scale=False
     )
 
@@ -239,17 +239,16 @@ def train_stacking(X_train, y_train):
         )),
     ]
 
-    # Use KFold (no shuffle) instead of TimeSeriesSplit because
-    # StackingRegressor requires full-partition CV (every sample in exactly
-    # one test fold). Individual base models were already tuned with TSCV.
-    from sklearn.model_selection import KFold
+    # TimeSeriesSplit maintains temporal ordering and provides a
+    # full-partition CV (every sample in exactly one test fold).
+    # KFold was wrong here — it trains on future data to predict the past.
     stack = StackingRegressor(
         estimators=base_estimators,
         final_estimator=Pipeline([
             ("scaler", StandardScaler()),
             ("model", Ridge(alpha=1.0)),
         ]),
-        cv=KFold(n_splits=5, shuffle=False),
+        cv=TimeSeriesSplit(n_splits=TSCV_SPLITS),
         n_jobs=-1,
     )
     stack.fit(X_train, y_train)

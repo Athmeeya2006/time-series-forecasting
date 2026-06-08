@@ -3,10 +3,11 @@ splitter.py - Chronological train/test split. No shuffle. One job only.
 """
 
 import pandas as pd
+from typing import List
 from config import TRAIN_RATIO
 
 
-def chronological_split(df: pd.DataFrame, feature_cols: list[str]):
+def chronological_split(df: pd.DataFrame, feature_cols: List[str]):
     """
     80% oldest rows = train, 20% newest rows = test.
     Returns X_train, X_test, y_train, y_test, split_idx.

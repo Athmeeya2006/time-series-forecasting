@@ -4,6 +4,7 @@ Call any function independently or from benchmark/main.
 """
 
 import os
+from typing import Optional
 
 from config import OUTPUT_DIR
 
@@ -19,7 +20,7 @@ import seaborn as sns
 plt.style.use("seaborn-v0_8-darkgrid")
 
 
-def _output_path(filename: str, output_prefix: str | None = None) -> str:
+def _output_path(filename: str, output_prefix: Optional[str] = None) -> str:
     if output_prefix:
         filename = f"{output_prefix}_{filename}"
     return str(OUTPUT_DIR / filename)
