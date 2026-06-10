@@ -215,6 +215,60 @@ def train_adaboost(X_train, y_train):
     return gs.best_estimator_, gs.best_params_
 
 
+from sklearn.base import BaseEstimator, RegressorMixin, clone
+
+class TimeSeriesStackingRegressor(BaseEstimator, RegressorMixin):
+    """
+    Custom Stacking Regressor designed specifically for time-series cross-validation.
+    Standard scikit-learn StackingRegressor fails with TimeSeriesSplit because it
+    requires standard partitions (where every training sample is predicted exactly once).
+    This implementation trains base models chronologically and trains the meta-estimator
+    strictly on the out-of-fold predictions generated across test sets.
+    """
+    def __init__(self, estimators, final_estimator, cv):
+        self.estimators = estimators
+        self.final_estimator = final_estimator
+        self.cv = cv
+
+    def fit(self, X, y):
+        # 1. Fit the final base estimators on the entire training set
+        self.fitted_estimators_ = []
+        for name, est in self.estimators:
+            fitted_est = clone(est).fit(X, y)
+            self.fitted_estimators_.append(fitted_est)
+
+        # 2. Generate out-of-fold predictions for the training set using TimeSeriesSplit
+        oof_preds = {name: np.zeros(len(X)) for name, _ in self.estimators}
+        test_indices_all = []
+
+        for train_idx, test_idx in self.cv.split(X, y):
+            X_train_fold = X.iloc[train_idx] if hasattr(X, "iloc") else X[train_idx]
+            y_train_fold = y.iloc[train_idx] if hasattr(y, "iloc") else y[train_idx]
+            X_test_fold = X.iloc[test_idx] if hasattr(X, "iloc") else X[test_idx]
+
+            for name, est in self.estimators:
+                fold_est = clone(est).fit(X_train_fold, y_train_fold)
+                preds = fold_est.predict(X_test_fold)
+                oof_preds[name][test_idx] = preds
+            test_indices_all.extend(test_idx)
+
+        # Sort test indices
+        test_indices_all = np.array(sorted(test_indices_all))
+
+        # 3. Construct meta-features for the meta-estimator
+        meta_features = np.column_stack([oof_preds[name][test_indices_all] for name, _ in self.estimators])
+        meta_targets = y.iloc[test_indices_all] if hasattr(y, "iloc") else y[test_indices_all]
+
+        # 4. Fit the final meta-estimator
+        self.fitted_final_estimator_ = clone(self.final_estimator).fit(meta_features, meta_targets)
+        return self
+
+    def predict(self, X):
+        # Generate meta-features using predictions of the base estimators
+        meta_features = np.column_stack([est.predict(X) for est in self.fitted_estimators_])
+        return self.fitted_final_estimator_.predict(meta_features)
+
+
 def train_stacking(X_train, y_train):
     """
     Stacking Ensemble: combines multiple diverse base models with a Ridge
@@ -239,17 +293,14 @@ def train_stacking(X_train, y_train):
         )),
     ]
 
-    # TimeSeriesSplit maintains temporal ordering and provides a
-    # full-partition CV (every sample in exactly one test fold).
-    # KFold was wrong here — it trains on future data to predict the past.
-    stack = StackingRegressor(
+    # Use the custom TimeSeriesStackingRegressor
+    stack = TimeSeriesStackingRegressor(
         estimators=base_estimators,
         final_estimator=Pipeline([
             ("scaler", StandardScaler()),
             ("model", Ridge(alpha=1.0)),
         ]),
         cv=TimeSeriesSplit(n_splits=TSCV_SPLITS),
-        n_jobs=-1,
     )
     stack.fit(X_train, y_train)
     return stack, {"ensemble": "Ridge+RF+XGB+LGBM -> Ridge meta"}

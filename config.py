@@ -8,8 +8,8 @@ BASE_DIR = Path(__file__).resolve().parent
 
 DATA_PATHS = [
     "500209_combined.csv",  # Full 5-year history (500209.csv is a 1-year subset)
-    "500510.csv",
-    "532174.csv",
+    "500510_combined.csv",
+    "532174_combined.csv",
 ]
 
 DATE_COL = "Date"

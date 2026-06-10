@@ -32,10 +32,10 @@ A regression pipeline that predicts the **next trading day's close price** for I
 | File | Stock Code | Rows | Date Range |
 |------|-----------|------|------------|
 | `500209_combined.csv` | 500209 (Infosys) | ~1187 | 2021–2026 (5 years, combined) |
-| `500510.csv` | 500510 | ~247 | 2025–2026 (1 year) |
-| `532174.csv` | 532174 | ~247 | 2025–2026 (1 year) |
+| `500510_combined.csv` | 500510 | ~1062 | 2021–2026 (5 years, combined) |
+| `532174_combined.csv` | 532174 | ~1196 | 2021–2026 (5 years, combined) |
 
-> **Note:** `500209.csv` (1-year subset) was removed from the pipeline — it is a strict subset of `500209_combined.csv` and was causing duplicate analysis with unreliably small data.
+> **Note:** The 1-year subset files (`500209.csv`, `500510.csv`, and `532174.csv`) were replaced with their full combined 5-year history files to ensure the models train on a larger, more representative dataset and avoid redundant pipelines on small subsets.
 
 ---
 
@@ -257,7 +257,7 @@ All outputs are saved to the `outputs/` directory with a dataset prefix:
 
 ## Limitations and Honest Assessment
 
-- **Small datasets:** The 1-year datasets (~247 rows) have limited training data after the 80/20 split. Feature selection is capped to prevent overfitting, but results should be interpreted cautiously.
+- **Small datasets:** Originally, the pipeline used 1-year datasets (~247 rows) with limited training data. These have been updated to combined 5-year datasets (~1000+ rows) to provide more robust history, although adaptive feature selection is still in place to prevent overfitting when needed.
 - **No transaction costs:** Directional accuracy does not account for bid-ask spreads, brokerage fees, or slippage.
 - **Single-stock models:** Each stock is modeled independently. Cross-stock signals are not captured.
 - **No exogenous features:** The model uses only price/volume data. Macro indicators, news sentiment, and sector indices are excluded.
