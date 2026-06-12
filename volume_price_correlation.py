@@ -129,7 +129,7 @@ def calculate_and_plot_correlation(file_name: str):
     axes[1].set_xticklabels([f"t{k:+d}" if k != 0 else "t" for k in lags])
     axes[1].legend(loc="upper right")
 
-    plt.suptitle(f"Price-Volume Joint Dynamics Audit — Stock Code: {prefix}", y=0.98)
+    plt.suptitle(f"Price-Volume Joint Dynamics Audit - Stock Code: {prefix}", y=0.98)
     plt.tight_layout()
 
     # Save output

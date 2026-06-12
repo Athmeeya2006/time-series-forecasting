@@ -1,7 +1,4 @@
-"""
-benchmark.py - Trains ALL models, collects metrics, builds comparison table.
-One job only. The main comparison engine.
-"""
+"""Benchmark suite to train, evaluate, and compare multiple models."""
 
 import numpy as np
 import pandas as pd

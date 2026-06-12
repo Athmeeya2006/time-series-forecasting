@@ -1,6 +1,4 @@
-"""
-splitter.py - Chronological train/test split. No shuffle. One job only.
-"""
+"""Chronological train/test dataset splitting."""
 
 import pandas as pd
 from typing import List

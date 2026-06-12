@@ -1,15 +1,6 @@
 """
-features.py - All feature engineering. One job only.
-
-Features built:
-  1. Lag features        - what the price/volume WAS n days ago
-  2. Rolling stats       - trend and volatility over a window
-  3. Return features     - percentage change, log return (using today's close; safe
-                           because the target is shift(-1))
-  4. Technical indicators - RSI, MACD, Bollinger Bands, EMA, SMA, ATR, OBV proxy
-  5. Calendar features   - day of week, month
-  6. Interaction features- cross-feature ratios for richer signal
-  7. Target              - next-day close price (shift -1)
+Feature engineering pipeline for stock price forecasting.
+Computes lag features, rolling statistics, price returns, technical indicators, and calendar features.
 """
 
 import pandas as pd
@@ -33,7 +24,7 @@ def add_lag_features(df):
 
 
 def add_rolling_features(df):
-    """Rolling mean, std, min, max on Close (using today's close — no extra shift
+    """Rolling mean, std, min, and max on Close (using today's close; no extra shift
     needed because the target is already shift(-1))."""
     for w in ROLLING_WINDOWS:
         base = df[TARGET_COL]
@@ -58,7 +49,7 @@ def add_rolling_features(df):
 
 
 def add_return_features(df):
-    """Return features use today's close (no extra shift — target is already
+    """Return features use today's close (no extra shift; target is already
     shift(-1), so using today's data is safe)."""
     close = df[TARGET_COL]
     df["daily_return"]    = close.pct_change()
@@ -213,7 +204,7 @@ def build_features(df):
 
     df = df.dropna().copy().reset_index(drop=True)
 
-    # Exclude only metadata columns — keep raw OHLC/Volume as direct features
+    # Exclude only metadata columns; keep raw OHLC/Volume as direct features
     # so today's price levels are visible to the model.
     exclude = [DATE_COL, "Target",
                "Total Turnover (Rs.)", "Deliverable Quantity",

@@ -1,6 +1,4 @@
-"""
-data_loader.py - Load, clean, and validate the CSV. One job only.
-"""
+"""Utilities for loading, cleaning, and validating historical stock price CSV datasets."""
 
 import pandas as pd
 from pathlib import Path

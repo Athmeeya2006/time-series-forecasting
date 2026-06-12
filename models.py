@@ -1,12 +1,6 @@
 """
-models.py - All model definitions and hyperparameter tuning. One job only.
-
-Each train_* function:
-  - Takes X_train, y_train
-  - Tunes hyperparameters using TimeSeriesSplit (NO future data leakage)
-  - Returns (best_fitted_model, best_params_dict)
-
-MODEL_REGISTRY maps name -> function so benchmark.py can loop over all.
+Model definitions, custom stacking ensemble, and hyperparameter tuning functions.
+All models use time-series cross-validation to prevent temporal data leakage.
 """
 
 import numpy as np
@@ -81,54 +75,27 @@ def _tune(estimator, param_grid, X_train, y_train, scale=True):
 
 
 def train_ridge(X_train, y_train):
-    """
-    Ridge Regression: Linear model with L2 penalty.
-    Parameter: alpha = how strongly to penalize large coefficients.
-    Higher alpha = more regularization = simpler model.
-    """
+    """Train and tune a Ridge Regression model."""
     return _tune(Ridge(), {"alpha": RIDGE_ALPHAS}, X_train, y_train)
 
 
 def train_lasso(X_train, y_train):
-    """
-    Lasso Regression: Linear model with L1 penalty.
-    Unlike Ridge, Lasso can zero out irrelevant features entirely.
-    Parameter: alpha = regularization strength.
-    """
+    """Train and tune a Lasso Regression model."""
     return _tune(Lasso(max_iter=50000), {"alpha": LASSO_ALPHAS}, X_train, y_train)
 
 
 def train_elasticnet(X_train, y_train):
-    """
-    ElasticNet: Combines L1 (Lasso) + L2 (Ridge) penalties.
-    Parameters:
-      alpha    = total penalty strength
-      l1_ratio = mix (0=pure Ridge, 1=pure Lasso, 0.5=half-half)
-    Often outperforms both individually.
-    """
+    """Train and tune an ElasticNet Regression model."""
     return _tune(ElasticNet(max_iter=100000), ENET_GRID, X_train, y_train)
 
 
 def train_svr(X_train, y_train):
-    """
-    Support Vector Regression: finds a tube around data, ignores points inside.
-    Excellent for small datasets because it focuses on hard examples.
-    Parameters:
-      C       = penalty for points outside the tube (higher = less regularization)
-      epsilon = width of the tube (tolerance margin)
-      kernel  = rbf for non-linear, linear for linear
-    """
+    """Train and tune a Support Vector Regression model."""
     return _tune(SVR(), SVR_GRID, X_train, y_train)
 
 
 def train_random_forest(X_train, y_train):
-    """
-    Random Forest: ensemble of decision trees trained on random subsets.
-    Parameters:
-      n_estimators     = number of trees (more = more stable, slower)
-      max_depth        = how deep each tree can grow (None = unlimited, risky on small data)
-      min_samples_leaf = minimum samples at a leaf node (higher = simpler trees)
-    """
+    """Train and tune a Random Forest Regressor."""
     return _tune(
         RandomForestRegressor(random_state=42),
         RF_GRID, X_train, y_train, scale=False
@@ -136,13 +103,7 @@ def train_random_forest(X_train, y_train):
 
 
 def train_gradient_boosting(X_train, y_train):
-    """
-    Gradient Boosting: builds trees sequentially, each one corrects prior errors.
-    Parameters:
-      n_estimators  = number of boosting rounds
-      max_depth     = tree depth per round (keep low: 3-5)
-      learning_rate = how much each tree contributes (lower = slower but better)
-    """
+    """Train and tune a Gradient Boosting Regressor."""
     return _tune(
         GradientBoostingRegressor(random_state=42),
         GBM_GRID, X_train, y_train, scale=False
@@ -150,11 +111,7 @@ def train_gradient_boosting(X_train, y_train):
 
 
 def train_xgboost(X_train, y_train):
-    """
-    XGBoost: optimized, regularized gradient boosting.
-    Adds subsample (fraction of rows per tree) and column subsampling.
-    Often the strongest classical ML model.
-    """
+    """Train and tune an XGBoost Regressor."""
     return _tune(
         XGBRegressor(random_state=42, verbosity=0, n_jobs=1),
         XGB_GRID, X_train, y_train, scale=False
@@ -162,11 +119,7 @@ def train_xgboost(X_train, y_train):
 
 
 def train_lightgbm(X_train, y_train):
-    """
-    LightGBM: leaf-wise tree growth (vs depth-wise in XGBoost).
-    Faster, often comparable accuracy.
-    num_leaves controls complexity directly.
-    """
+    """Train and tune a LightGBM Regressor."""
     return _tune(
         LGBMRegressor(random_state=42, verbose=-1, n_jobs=1),
         LGBM_GRID, X_train, y_train, scale=False
@@ -174,10 +127,7 @@ def train_lightgbm(X_train, y_train):
 
 
 def train_adaboost(X_train, y_train):
-    """
-    AdaBoost: adaptive boosting with decision stumps.
-    Focuses on hard-to-predict samples by re-weighting.
-    """
+    """Train and tune an AdaBoost Regressor."""
     grid = {
         "n_estimators": [100, 200, 500],
         "learning_rate": [0.01, 0.05, 0.1, 0.5],
@@ -219,11 +169,9 @@ from sklearn.base import BaseEstimator, RegressorMixin, clone
 
 class TimeSeriesStackingRegressor(BaseEstimator, RegressorMixin):
     """
-    Custom Stacking Regressor designed specifically for time-series cross-validation.
-    Standard scikit-learn StackingRegressor fails with TimeSeriesSplit because it
-    requires standard partitions (where every training sample is predicted exactly once).
-    This implementation trains base models chronologically and trains the meta-estimator
-    strictly on the out-of-fold predictions generated across test sets.
+    Custom stacking regressor for time-series cross-validation.
+    Trains base models chronologically and fits the meta-estimator
+    on out-of-fold predictions.
     """
     def __init__(self, estimators, final_estimator, cv):
         self.estimators = estimators
@@ -270,11 +218,7 @@ class TimeSeriesStackingRegressor(BaseEstimator, RegressorMixin):
 
 
 def train_stacking(X_train, y_train):
-    """
-    Stacking Ensemble: combines multiple diverse base models with a Ridge
-    meta-learner. Each base model's out-of-fold predictions become features
-    for the meta-learner, capturing complementary signals.
-    """
+    """Train a custom time-series stacking ensemble using base regressors and a meta-learner."""
     base_estimators = [
         ("ridge", Pipeline([
             ("scaler", StandardScaler()),

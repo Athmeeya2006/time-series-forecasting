@@ -1,6 +1,4 @@
-"""
-evaluate.py - All metrics in one place. One job only.
-"""
+"""Evaluation metrics for time-series forecasting models."""
 
 import numpy as np
 import pandas as pd

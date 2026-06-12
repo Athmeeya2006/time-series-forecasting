@@ -1,6 +1,4 @@
-"""
-config.py - Centralized constants and hyperparameters.
-"""
+"""Configuration constants and hyperparameter grids for stock price forecasting."""
 
 from pathlib import Path
 

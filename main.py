@@ -1,6 +1,4 @@
-"""
-main.py - Orchestrator. Runs the full pipeline in order. One job only.
-"""
+"""Orchestration script for the stock forecasting pipeline."""
 
 import sys
 from pathlib import Path

@@ -1,7 +1,4 @@
-"""
-visualize.py - All plots. One job only.
-Call any function independently or from benchmark/main.
-"""
+"""Visualization utilities for forecasting performance and data analysis."""
 
 import os
 from typing import Optional
