@@ -6,7 +6,7 @@ BASE_DIR = Path(__file__).resolve().parent
 
 DATA_PATHS = [
     "500112_combined.csv",
-    "500209_combined.csv",  # Full 5-year history (500209.csv is a 1-year subset)
+    "500209_combined.csv",
     "500247_combined.csv",
     "500510_combined.csv",
     "500696_combined.csv",

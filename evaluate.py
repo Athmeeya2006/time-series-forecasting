@@ -31,7 +31,7 @@ def _directional_accuracy(y_pred, y_true, prev_actual) -> float:
     pred_dir = np.sign(y_pred_arr - prev_actual_arr)
     true_dir = np.sign(y_true_arr - prev_actual_arr)
 
-    # Exclude days where actual did not move (undefined ground truth)
+
     mask = true_dir != 0
     if mask.sum() == 0:
         return np.nan
@@ -39,7 +39,7 @@ def _directional_accuracy(y_pred, y_true, prev_actual) -> float:
     pred_dir = pred_dir[mask]
     true_dir = true_dir[mask]
 
-    # Exact match scores 1, tie (pred_dir == 0) scores 0.5, mismatch scores 0
+
     hits = np.where(pred_dir == true_dir, 1.0, np.where(pred_dir == 0, 0.5, 0.0))
     return np.mean(hits) * 100
 

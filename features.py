@@ -32,12 +32,12 @@ def add_rolling_features(df):
         df[f"close_std_{w}d"]  = base.rolling(w).std()
         df[f"close_min_{w}d"]  = base.rolling(w).min()
         df[f"close_max_{w}d"]  = base.rolling(w).max()
-        # Rolling range as a fraction of rolling mean (volatility-normalized)
+
         df[f"close_range_pct_{w}d"] = (
             (df[f"close_max_{w}d"] - df[f"close_min_{w}d"])
             / (df[f"close_mean_{w}d"] + 1e-9)
         )
-    # Volume rolling features
+
     if "No.of Shares" in df.columns:
         vol = df["No.of Shares"]
         for w in ROLLING_WINDOWS:
@@ -54,11 +54,11 @@ def add_return_features(df):
     close = df[TARGET_COL]
     df["daily_return"]    = close.pct_change()
     df["log_return"]      = np.log(close / close.shift(1))
-    # Rolling return (momentum signal)
+
     df["return_3d"]       = close.pct_change(3)
     df["return_5d"]       = close.pct_change(5)
     df["return_10d"]      = close.pct_change(10)
-    # Return volatility (realized vol)
+
     df["return_std_5d"]   = df["daily_return"].rolling(5).std()
     df["return_std_10d"]  = df["daily_return"].rolling(10).std()
     return df
@@ -80,48 +80,48 @@ def _ema(series, span):
 
 
 def add_technical_indicators(df):
-    close = df[TARGET_COL]  # Use today's close (target is shift(-1), no leakage)
+    close = df[TARGET_COL]
 
-    # Simple Moving Averages
+
     df["SMA_5"]  = close.rolling(5).mean()
     df["SMA_10"] = close.rolling(10).mean()
     df["SMA_20"] = close.rolling(20).mean()
     df["SMA_50"] = close.rolling(50).mean()
 
-    # Exponential Moving Averages
+
     df["EMA_5"]  = _ema(close, 5)
     df["EMA_10"] = _ema(close, 10)
     df["EMA_20"] = _ema(close, 20)
 
-    # RSI (14-day)
+
     df["RSI_14"] = _rsi(close, 14)
 
-    # MACD = EMA12 - EMA26. Signal line = EMA9 of MACD.
+
     ema12         = _ema(close, 12)
     ema26         = _ema(close, 26)
     df["MACD"]         = ema12 - ema26
     df["MACD_signal"]  = _ema(df["MACD"], 9)
     df["MACD_hist"]    = df["MACD"] - df["MACD_signal"]
 
-    # Bollinger Bands: price relative to its rolling mean +/- 2 std
+
     bb_mean        = close.rolling(20).mean()
     bb_std         = close.rolling(20).std()
     df["BB_upper"] = bb_mean + 2 * bb_std
     df["BB_lower"] = bb_mean - 2 * bb_std
-    df["BB_width"] = df["BB_upper"] - df["BB_lower"]          # volatility proxy
+    df["BB_width"] = df["BB_upper"] - df["BB_lower"]
     df["BB_pct"]   = (close - df["BB_lower"]) / (df["BB_width"] + 1e-9)
 
-    # Price vs SMA ratios (where is price relative to trend?)
+
     df["price_vs_SMA5"]  = close / (df["SMA_5"]  + 1e-9)
     df["price_vs_SMA20"] = close / (df["SMA_20"] + 1e-9)
     df["price_vs_SMA50"] = close / (df["SMA_50"] + 1e-9)
 
-    # SMA crossover signals (momentum regime)
+
     df["SMA5_vs_SMA20"]  = df["SMA_5"] / (df["SMA_20"] + 1e-9)
     df["SMA10_vs_SMA50"] = df["SMA_10"] / (df["SMA_50"] + 1e-9)
     df["EMA5_vs_EMA20"]  = df["EMA_5"] / (df["EMA_20"] + 1e-9)
 
-    # ATR (Average True Range) - volatility indicator
+
     if "High Price" in df.columns and "Low Price" in df.columns:
         high = df["High Price"]
         low  = df["Low Price"]
@@ -130,12 +130,12 @@ def add_technical_indicators(df):
         tr3 = np.abs(low - close)
         true_range = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
         df["ATR_14"] = true_range.rolling(14).mean()
-        df["ATR_pct"] = df["ATR_14"] / (close + 1e-9)  # normalized ATR
+        df["ATR_pct"] = df["ATR_14"] / (close + 1e-9)
 
-    # High-Low spread ratio
+
     df["HL_ratio"] = df["Spread High-Low"] / (close + 1e-9)
 
-    # Stochastic Oscillator (%K)
+
     if "High Price" in df.columns and "Low Price" in df.columns:
         low14  = df["Low Price"].rolling(14).min()
         high14 = df["High Price"].rolling(14).max()
@@ -176,7 +176,7 @@ def select_features(df, feature_cols, max_features=None):
               f"(under cap of {max_features})")
         return feature_cols
 
-    # Compute MI on training portion only to avoid leakage
+
     X_train = df[feature_cols].iloc[:n_train]
     y_train = df["Target"].iloc[:n_train]
 
@@ -204,14 +204,13 @@ def build_features(df):
 
     df = df.dropna().copy().reset_index(drop=True)
 
-    # Exclude only metadata columns; keep raw OHLC/Volume as direct features
-    # so today's price levels are visible to the model.
+
     exclude = [DATE_COL, "Target",
                "Total Turnover (Rs.)", "Deliverable Quantity",
                "% Deli. Qty to Traded Qty"]
     feature_cols = [c for c in df.columns if c not in exclude]
 
-    # Adaptive feature selection: prevent overfitting on small datasets
+
     feature_cols = select_features(df, feature_cols)
 
     print(f"[features] {len(df)} usable rows, {len(feature_cols)} features (final)")

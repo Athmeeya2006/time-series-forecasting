@@ -24,7 +24,7 @@ from config import (
 
 TSCV = TimeSeriesSplit(n_splits=TSCV_SPLITS)
 
-# Threshold: if grid has more combinations than this, use RandomizedSearchCV
+
 _RANDOMIZED_THRESHOLD = 60
 _RANDOMIZED_ITERS = 40
 
@@ -179,13 +179,13 @@ class TimeSeriesStackingRegressor(BaseEstimator, RegressorMixin):
         self.cv = cv
 
     def fit(self, X, y):
-        # 1. Fit the final base estimators on the entire training set
+
         self.fitted_estimators_ = []
         for name, est in self.estimators:
             fitted_est = clone(est).fit(X, y)
             self.fitted_estimators_.append(fitted_est)
 
-        # 2. Generate out-of-fold predictions for the training set using TimeSeriesSplit
+
         oof_preds = {name: np.zeros(len(X)) for name, _ in self.estimators}
         test_indices_all = []
 
@@ -200,19 +200,19 @@ class TimeSeriesStackingRegressor(BaseEstimator, RegressorMixin):
                 oof_preds[name][test_idx] = preds
             test_indices_all.extend(test_idx)
 
-        # Sort test indices
+
         test_indices_all = np.array(sorted(test_indices_all))
 
-        # 3. Construct meta-features for the meta-estimator
+
         meta_features = np.column_stack([oof_preds[name][test_indices_all] for name, _ in self.estimators])
         meta_targets = y.iloc[test_indices_all] if hasattr(y, "iloc") else y[test_indices_all]
 
-        # 4. Fit the final meta-estimator
+
         self.fitted_final_estimator_ = clone(self.final_estimator).fit(meta_features, meta_targets)
         return self
 
     def predict(self, X):
-        # Generate meta-features using predictions of the base estimators
+
         meta_features = np.column_stack([est.predict(X) for est in self.fitted_estimators_])
         return self.fitted_final_estimator_.predict(meta_features)
 
@@ -237,7 +237,7 @@ def train_stacking(X_train, y_train):
         )),
     ]
 
-    # Use the custom TimeSeriesStackingRegressor
+
     stack = TimeSeriesStackingRegressor(
         estimators=base_estimators,
         final_estimator=Pipeline([

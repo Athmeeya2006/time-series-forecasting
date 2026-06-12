@@ -33,25 +33,25 @@ def run_pipeline(data_path: Path):
     print(f"  Stock Price Prediction Pipeline: {data_path.name}")
     print("=" * 50)
 
-    # Step 1: Load + clean
+
     df = load_and_clean(data_path)
 
-    # Step 2: EDA plots
+
     plot_price_history(df, output_prefix=output_prefix)
 
-    # Step 3: Feature engineering
-    df, feature_cols = build_features(df)
-    plot_correlation_heatmap(df, feature_cols[:15], output_prefix=output_prefix)  # top 15 for readability
 
-    # Step 4: Chronological split
+    df, feature_cols = build_features(df)
+    plot_correlation_heatmap(df, feature_cols[:15], output_prefix=output_prefix)
+
+
     X_train, X_test, y_train, y_test, _ = chronological_split(df, feature_cols)
 
-    # Step 5: Benchmark all models
+
     results_df, predictions = run_benchmark(
         X_train, X_test, y_train, y_test, feature_cols, output_prefix=output_prefix
     )
 
-    # Step 6: Print winner (directional accuracy ranked)
+
     best = results_df.iloc[0]
     import numpy as _np
     dir_acc_str = f"{best['Dir Acc%']:.1f}%" if not _np.isnan(best['Dir Acc%']) else "N/A"

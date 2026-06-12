@@ -97,7 +97,7 @@ def plot_benchmark_table(results_df: pd.DataFrame, output_prefix=None):
     axes[0].set_ylabel("MAPE%")
     axes[0].tick_params(axis="x", rotation=30)
 
-    # Filter out NaN Dir Acc% rows for the bar chart
+
     dir_acc_df = results_df.dropna(subset=["Dir Acc%"])
     if not dir_acc_df.empty:
         dir_acc_df.sort_values("Dir Acc%", ascending=False).plot(
@@ -139,4 +139,3 @@ def plot_feature_importance(model, feature_cols: list, model_name: str, output_p
     plt.savefig(path, dpi=150)
     plt.close()
     print(f"[visualize] Saved {path}")
-
