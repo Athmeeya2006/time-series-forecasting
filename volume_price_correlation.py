@@ -25,9 +25,13 @@ plt.rcParams.update({
 
 BASE_DIR = Path(__file__).resolve().parent
 DATA_PATHS = [
+    "500112_combined.csv",
     "500209_combined.csv",
+    "500247_combined.csv",
     "500510_combined.csv",
+    "500696_combined.csv",
     "532174_combined.csv",
+    "532215_combined.csv",
 ]
 OUTPUT_DIR = BASE_DIR / "outputs"
 os.makedirs(OUTPUT_DIR, exist_ok=True)

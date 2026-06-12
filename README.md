@@ -31,9 +31,13 @@ A regression pipeline that predicts the **next trading day's close price** for I
 
 | File | Stock Code | Rows | Date Range |
 |------|-----------|------|------------|
+| `500112_combined.csv` | 500112 | ~1179 | 2021–2026 (5 years, combined) |
 | `500209_combined.csv` | 500209 (Infosys) | ~1187 | 2021–2026 (5 years, combined) |
+| `500247_combined.csv` | 500247 | ~1179 | 2021–2026 (5 years, combined) |
 | `500510_combined.csv` | 500510 | ~1062 | 2021–2026 (5 years, combined) |
+| `500696_combined.csv` | 500696 | ~1179 | 2021–2026 (5 years, combined) |
 | `532174_combined.csv` | 532174 | ~1196 | 2021–2026 (5 years, combined) |
+| `532215_combined.csv` | 532215 | ~1179 | 2021–2026 (5 years, combined) |
 
 > **Note:** The 1-year subset files (`500209.csv`, `500510.csv`, and `532174.csv`) were replaced with their full combined 5-year history files to ensure the models train on a larger, more representative dataset and avoid redundant pipelines on small subsets.
 
